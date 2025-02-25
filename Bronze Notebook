@@ -1,0 +1,75 @@
+tiers = ["bronze", "silver", "gold"]
+adls_paths = {tier: f"abfss://{tier}@.dfs.core.windows.net/" for tier in tiers}
+
+# Accessing paths
+bronze_adls = adls_paths["bronze"]
+silver_adls = adls_paths["silver"]
+gold_adls = adls_paths["gold"] 
+
+dbutils.fs.ls(bronze_adls)
+dbutils.fs.ls(silver_adls)
+dbutils.fs.ls(gold_adls)
+[]
+import requests
+import json
+from datetime import date, timedelta
+dbutils.widgets.text("start_date", "")
+dbutils.widgets.text("end_date", "")
+start_date = dbutils.widgets.get("start_date")
+end_date = dbutils.widgets.get("end_date")
+url = f"https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime={start_date}&endtime={end_date}"
+
+try:
+    # Make the GET request to fetch data
+    response = requests.get(url)
+
+    # Check if the request was successful
+    response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+    data = response.json().get('features', [])
+
+    if not data:
+        print("No data returned for the specified date range.")
+    else:
+        # Specify the ADLS path
+        file_path = f"{bronze_adls}/{start_date}_earthquake_data.json"
+
+        # Save the JSON data
+        json_data = json.dumps(data, indent=4)
+        dbutils.fs.put(file_path, json_data, overwrite=True)
+        print(f"Data successfully saved to {file_path}")
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching data from API: {e}")
+Wrote 362560 bytes.
+Data successfully saved to abfss://bronze@.dfs.core.windows.net//2025-02-24_earthquake_data.json
+
+data[0]
+{'type': 'Feature',
+ 'properties': {'mag': 1.35,
+  'place': '36 km S of Silver Gate, Montana',
+  'time': 1740441234210,
+  'updated': 1740493416400,
+  'tz': None,
+  'url': 'https://earthquake.usgs.gov/earthquakes/eventpage/uu80102611',
+  'detail': 'https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=uu80102611&format=geojson',
+  'felt': None,
+  'cdi': None,
+  'mmi': None,
+  'alert': None,
+  'status': 'reviewed',
+  'tsunami': 0,
+  'sig': 28,
+  'net': 'uu',
+  'code': '80102611',
+  'ids': ',uu80102611,',
+  'sources': ',uu,',
+  'types': ',origin,phase-data,',
+  'nst': 8,
+  'dmin': 0.09872,
+  'rms': 0.15,
+  'gap': 94,
+  'magType': 'md',
+  'type': 'earthquake',
+  'title': 'M 1.4 - 36 km S of Silver Gate, Montana'},
+ 'geometry': {'type': 'Point',
+  'coordinates': [-110.0405, 44.6808333333333, 12.93]},
+ 'id': 'uu80102611'}
