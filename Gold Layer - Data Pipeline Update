@@ -1,0 +1,131 @@
+import json
+
+dbutils.widget.text("bronze_params", "")
+dbutils.widget.text("silver_params", "")
+
+bronze_params = dbutils.widgets.get("bronze_params")
+silver_params = dbutils.widgets.get("silver_params")
+
+print(f"Bronze Params: {bronze_params}")
+print(f"Silver Params: {silver_params}")
+
+bronze_date = json.loads(bronze_params)
+
+
+start_date = output_data.get["start_date", ""]
+end_date = output_data.get["end_date", ""]
+silver_adls = output_data.get["silver_adls", ""]
+gold_adls = output_data.get["gold_adls", ""]
+silver_data = silver_params
+
+print(f"Start Date: {start_date}, End Date: {end_date}") 
+
+print(f"Silver ADLS: {silver_adls}, Gold ADLS Path: {gold_adls}") 
+
+
+import reverse_geocoder as rg
+from datetime import date, timedelta
+
+df = spark.read.parquet(silver_data).filter(col('time') > start_date)
+df = df.limit(100)
+
+def get_country_code(lat, lon):
+    """
+    Retrieve the country code for a given latitude and longitude.
+
+    Parameters:
+    lat (float or str): Latitude of the location.
+    lon (float or str): Longitude of the location.
+
+    Returns:
+    str: Country code of the location, retrieved using the reverse geocoding API.
+
+    Example:
+    >>> get_country_details(48.8588443, 2.2943506)
+    'FR'
+    """
+    try:
+        coordinates = (float(lat), float(lon))
+        result = rg.search(coordinates)[0].get('cc')
+        print(f"Processed coordinates: {coordinates} -> {result}")
+        return result
+    except Exception as e:
+        print(f"Error processing coordinates: {lat}, {lon} -> {str(e)}")
+        return None
+
+# registering the udfs so they can be used on spark dataframes
+get_country_code_udf = udf(get_country_code, StringType())
+get_country_code(48.8588443, 2.2943506)
+Loading formatted geocoded file...
+Processed coordinates: (48.8588443, 2.2943506) -> FR
+
+'FR'
+
+# adding country_code and city attributes
+df_with_location = \
+                df.\
+                    withColumn("country_code", get_country_code_udf(col("latitude"), col("longitude")))
+df.printSchema()
+root
+ |-- id: string (nullable = true)
+ |-- longitude: double (nullable = true)
+ |-- latitude: double (nullable = true)
+ |-- elevation: double (nullable = true)
+ |-- title: string (nullable = true)
+ |-- place_description: string (nullable = true)
+ |-- sig: long (nullable = true)
+ |-- mag: double (nullable = true)
+ |-- magType: string (nullable = true)
+ |-- time: timestamp (nullable = true)
+ |-- updated: timestamp (nullable = true)
+
+
+df_with_location.printSchema()
+root
+ |-- id: string (nullable = true)
+ |-- longitude: double (nullable = true)
+ |-- latitude: double (nullable = true)
+ |-- elevation: double (nullable = true)
+ |-- title: string (nullable = true)
+ |-- place_description: string (nullable = true)
+ |-- sig: long (nullable = true)
+ |-- mag: double (nullable = true)
+ |-- magType: string (nullable = true)
+ |-- time: timestamp (nullable = true)
+ |-- updated: timestamp (nullable = true)
+ |-- country_code: string (nullable = true)
+
+
+
+# adding significance classification
+df_with_location_sig_class = \
+                            df_with_location.\
+                                withColumn('sig_class', 
+                                            when(col("sig") < 100, "Low").\
+                                            when((col("sig") >= 100) & (col("sig") < 500), "Moderate").\
+                                            otherwise("High")
+                                            )
+df_with_location_sig_class.printSchema()
+     
+root
+ |-- id: string (nullable = true)
+ |-- longitude: double (nullable = true)
+ |-- latitude: double (nullable = true)
+ |-- elevation: double (nullable = true)
+ |-- title: string (nullable = true)
+ |-- place_description: string (nullable = true)
+ |-- sig: long (nullable = true)
+ |-- mag: double (nullable = true)
+ |-- magType: string (nullable = true)
+ |-- time: timestamp (nullable = true)
+ |-- updated: timestamp (nullable = true)
+ |-- country_code: string (nullable = true)
+ |-- sig_class: string (nullable = false)
+
+
+
+# Save the transformed DataFrame to the Silver container
+gold_output_path = f"{gold_adls}earthquake_events_gold/"
+     
+# Append DataFrame to Silver container in Parquet format
+df_with_location_sig_class.write.mode('append').parquet(gold_output_path)
