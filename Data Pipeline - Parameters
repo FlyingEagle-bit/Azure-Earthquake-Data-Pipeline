@@ -1,0 +1,17 @@
+🌍 Earthquake Data Pipeline – Layer Configurations
+
+🔶 Bronze Layer
+This layer is responsible for ingesting raw data. The following parameters are dynamically set to define the date range:
+
+start_date: @formatDateTime(addDays(utcnow(), -1), 'yyyy-MM-dd') – sets the start date to the previous day.
+end_date: @formatDateTime(utcnow(), 'yyyy-MM-dd') – sets the end date to the current date.
+🔷 Silver Layer
+In this layer, cleaned and normalized data is processed. The parameters below are used to pass the output from the Bronze Layer:
+
+bronze_params: @string(activity('Bronze Notebook').output.runOutput) – references the output from the Bronze notebook to pass data to the Silver layer for further processing.
+🌟 Gold Layer
+The Gold layer aggregates and enriches the data, providing insights tailored to specific business needs. Both the Bronze and Silver layer outputs are used:
+
+bronze_params: @string(activity('Bronze Notebook').output.runOutput) – passes the output from the Bronze notebook.
+silver_params: @string(activity('Silver Notebook').output.runOutput) – passes the output from the Silver notebook for aggregation and enrichment.
+These dynamic configurations ensure smooth data flow between pipeline stages, enabling automated and efficient processing across all layers.
